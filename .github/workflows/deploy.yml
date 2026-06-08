@@ -34,7 +34,7 @@ jobs:
       - name: Build Frontend (Vite)
         working-directory: ./apps/web
         env:
-          VITE_API_URL: https://greenyellow-vulture-621069.hostingersite.com/
+          VITE_API_URL: https://greenyellow-vulture-621069.hostingersite.com
         run: pnpm run build
 
       - name: Deploy via FTP
