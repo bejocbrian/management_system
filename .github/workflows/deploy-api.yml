@@ -1,0 +1,37 @@
+name: Deploy API to Hostinger
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'apps/api/**'
+      - '.github/workflows/deploy-api.yml'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.API_SSH_HOST }}
+          username: ${{ secrets.API_SSH_USERNAME }}
+          password: ${{ secrets.API_SSH_PASSWORD }}
+          port: 22
+          script: |
+            set -e
+
+            # Navigate to repo (Hostinger clones into ~/htdocs/<domain>)
+            cd ~/htdocs/greenyellow-vulture-621069.hostingersite.com
+
+            # Pull latest
+            git pull origin master
+
+            # Install & build API
+            cd apps/api
+            npm install --omit=dev
+            npx prisma generate
+            npx tsc -p tsconfig.json
+            npx prisma migrate deploy
+
+            echo "Build complete. Restart the app from Hostinger hPanel > Node.js."
