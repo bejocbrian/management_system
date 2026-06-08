@@ -23,6 +23,7 @@ const app = express();
 app.use(cors({
   origin: [
     'https://powderblue-caterpillar-585125.hostingersite.com',
+    'https://maroon-eland-586562.hostingersite.com',
     'http://localhost:5173',
     'http://localhost:4173',
   ],
