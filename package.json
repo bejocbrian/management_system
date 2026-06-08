@@ -4,7 +4,6 @@
   "private": true,
   "scripts": {
     "build": "cd apps/api && npx tsc -p tsconfig.json",
-    "start": "node apps/api/dist/main.js",
-    "postinstall": "cd apps/api && npx prisma generate && npx prisma migrate deploy"
+    "start": "node apps/api/dist/main.js"
   }
 }

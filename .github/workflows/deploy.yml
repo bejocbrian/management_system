@@ -48,6 +48,11 @@ jobs:
           VITE_API_URL: https://maroon-eland-586562.hostingersite.com
         run: pnpm run build
 
+      - name: Verify build output
+        run: |
+          ls -la ./apps/web/dist/
+          test -f ./apps/web/dist/index.html || (echo "index.html missing!" && exit 1)
+
       - name: Deploy via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
