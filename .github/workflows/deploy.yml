@@ -20,7 +20,16 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'pnpm'
+          cache: 'npm'   # we'll install pnpm via corepack, cache npm store
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Prepare pnpm
+        run: corepack prepare pnpm@latest --activate
+
+      - name: Verify pnpm installation
+        run: pnpm --version
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
