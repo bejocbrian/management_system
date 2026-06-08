@@ -55,8 +55,7 @@ jobs:
           username: ${{ secrets.HOSTINGER_FTP_USERNAME }}
           password: ${{ secrets.HOSTINGER_FTP_PASSWORD }}
           local-dir: ./apps/web/dist/
-          remote-dir: /public_html/
-          exclusions: |
-            .git/
-            .gitignore
-            node_modules/
+          server-dir: /public_html/
+          exclude: |
+            **/.git*
+            **/node_modules/**
