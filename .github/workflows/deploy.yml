@@ -1,0 +1,45 @@
+name: Deploy Frontend to Hostinger
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js (use pnpm cache)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Frontend (Vite)
+        working-directory: ./apps/web
+        env:
+          VITE_API_URL: https://greenyellow-vulture-621069.hostingersite.com/
+        run: pnpm run build
+
+      - name: Deploy via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.4
+        with:
+          server: ${{ secrets.HOSTINGER_FTP_HOST }}
+          username: ${{ secrets.HOSTINGER_FTP_USERNAME }}
+          password: ${{ secrets.HOSTINGER_FTP_PASSWORD }}
+          local-dir: ./apps/web/dist/
+          remote-dir: /public_html/   # adjust if your site lives in a subfolder
+          exclusions: |
+            .git/
+            .gitignore
+            node_modules/
