@@ -1,0 +1,312 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  STOREKEEPER
+  TEACHER
+}
+
+enum ItemType {
+  CONSUMABLE
+  RETURNABLE
+}
+
+enum RequestStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+  PARTIALLY_ISSUED
+  FULLY_ISSUED
+}
+
+enum ApprovalActionType {
+  APPROVED
+  REJECTED
+  OVERRIDE_APPROVED
+}
+
+enum IssueLineStatus {
+  OUT
+  PARTIAL_RETURNED
+  RETURNED
+  DAMAGED
+  LOST
+}
+
+enum ReturnCondition {
+  GOOD
+  DAMAGED
+  LOST
+}
+
+enum LimitPeriod {
+  WEEKLY
+  MONTHLY
+  TERM
+}
+
+enum ImportType {
+  OPENING_STOCK
+  INVOICE_STOCK
+}
+
+enum ImportStatus {
+  PENDING
+  PARTIAL_SUCCESS
+  SUCCESS
+  FAILED
+}
+
+enum LedgerEntryType {
+  OPENING_STOCK
+  IMPORT_STOCK
+  ISSUE_OUT
+  RETURN_IN
+  ADJUSTMENT_IN
+  ADJUSTMENT_OUT
+  LOSS_DAMAGED
+  LOSS_LOST
+}
+
+model Department {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users User[]
+}
+
+model User {
+  id           String      @id @default(uuid())
+  email        String      @unique
+  passwordHash String
+  name         String
+  role         Role
+  isActive     Boolean     @default(true)
+  departmentId String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  department     Department?        @relation(fields: [departmentId], references: [id])
+  requests       Request[]          @relation("RequesterRequests")
+  approvals      ApprovalAction[]   @relation("ApprovalActors")
+  issuedBy       Issue[]            @relation("IssuedByUser")
+  issuedTo       Issue[]            @relation("IssuedToUser")
+  returnsGiven   ReturnRecord[]     @relation("ReturnGivenBy")
+  returnsTaken   ReturnRecord[]     @relation("ReturnReceivedBy")
+  limitRules     LimitRule[]
+  imports        ImportBatch[]      @relation("ImportCreatedBy")
+  ledgerEntries  StockLedgerEntry[] @relation("LedgerCreatedBy")
+  auditLogs      AuditLog[]         @relation("AuditActor")
+}
+
+model Item {
+  id                String           @id @default(uuid())
+  code              String           @unique
+  name              String
+  description       String?
+  type              ItemType
+  unit              String
+  lowStockThreshold Int              @default(0)
+  isActive          Boolean          @default(true)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  requestLines  RequestLine[]
+  issueLines    IssueLine[]
+  ledgerEntries StockLedgerEntry[]
+  limitRules    LimitRule[]
+}
+
+model Request {
+  id          String        @id @default(uuid())
+  requesterId String
+  status      RequestStatus @default(DRAFT)
+  notes       String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  requester       User             @relation("RequesterRequests", fields: [requesterId], references: [id])
+  lines           RequestLine[]
+  approvals       ApprovalAction[]
+  issues          Issue[]
+  adjustmentAudit AuditLog[]       @relation("RequestAudit")
+}
+
+model RequestLine {
+  id               String   @id @default(uuid())
+  requestId        String
+  itemId           String
+  quantityRequested Int
+  quantityApproved Int?
+
+  request Request @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  item    Item    @relation(fields: [itemId], references: [id])
+
+  @@index([requestId])
+}
+
+model ApprovalAction {
+  id        String             @id @default(uuid())
+  requestId String
+  actorId   String
+  action    ApprovalActionType
+  notes     String?
+  createdAt DateTime           @default(now())
+
+  request Request @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  actor   User    @relation("ApprovalActors", fields: [actorId], references: [id])
+}
+
+model Issue {
+  id         String   @id @default(uuid())
+  requestId  String?
+  issuedToId String
+  issuedById String
+  notes      String?
+  issuedAt   DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  request  Request?      @relation(fields: [requestId], references: [id])
+  issuedTo User          @relation("IssuedToUser", fields: [issuedToId], references: [id])
+  issuedBy User          @relation("IssuedByUser", fields: [issuedById], references: [id])
+  lines    IssueLine[]
+  returns  ReturnRecord[]
+}
+
+model IssueLine {
+  id               String          @id @default(uuid())
+  issueId          String
+  itemId           String
+  quantityIssued   Int
+  quantityReturned Int             @default(0)
+  dueDate          DateTime?
+  status           IssueLineStatus @default(OUT)
+
+  issue       Issue         @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  item        Item          @relation(fields: [itemId], references: [id])
+  returnLines ReturnLine[]
+
+  @@index([issueId])
+}
+
+model ReturnRecord {
+  id           String   @id @default(uuid())
+  issueId      String
+  returnedById String
+  receivedById String
+  notes        String?
+  createdAt    DateTime @default(now())
+
+  issue      Issue       @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  returnedBy User        @relation("ReturnGivenBy", fields: [returnedById], references: [id])
+  receivedBy User        @relation("ReturnReceivedBy", fields: [receivedById], references: [id])
+  lines      ReturnLine[]
+}
+
+model ReturnLine {
+  id          String          @id @default(uuid())
+  returnId    String
+  issueLineId String
+  quantity    Int
+  condition   ReturnCondition
+  note        String?
+
+  returnRecord ReturnRecord @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  issueLine    IssueLine    @relation(fields: [issueLineId], references: [id])
+}
+
+model LimitRule {
+  id          String      @id @default(uuid())
+  name        String
+  userId      String?
+  itemId      String?
+  maxQuantity Int
+  period      LimitPeriod
+  isActive    Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  user User? @relation(fields: [userId], references: [id])
+  item Item? @relation(fields: [itemId], references: [id])
+
+  @@index([userId, itemId, isActive])
+}
+
+model ImportBatch {
+  id         String       @id @default(uuid())
+  type       ImportType
+  fileName   String
+  checksum   String?
+  status     ImportStatus @default(PENDING)
+  summary    Json?
+  errors     Json?
+  createdById String
+  createdAt  DateTime     @default(now())
+
+  createdBy   User               @relation("ImportCreatedBy", fields: [createdById], references: [id])
+  ledgerLines StockLedgerEntry[]
+}
+
+model InvoiceLineFingerprint {
+  id        String   @id @default(uuid())
+  invoiceNo String
+  lineHash  String
+  createdAt DateTime @default(now())
+
+  @@unique([invoiceNo, lineHash])
+}
+
+model StockLedgerEntry {
+  id            String          @id @default(uuid())
+  itemId         String
+  type          LedgerEntryType
+  quantityDelta Int
+  unitPrice     Decimal?        @db.Decimal(12, 2)
+  referenceType String?
+  referenceId   String?
+  invoiceNo     String?
+  notes         String?
+  importBatchId String?
+  createdById   String
+  createdAt     DateTime        @default(now())
+
+  item        Item        @relation(fields: [itemId], references: [id])
+  importBatch ImportBatch? @relation(fields: [importBatchId], references: [id])
+  createdBy   User        @relation("LedgerCreatedBy", fields: [createdById], references: [id])
+
+  @@index([itemId, createdAt])
+}
+
+model SystemSetting {
+  key       String   @id
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorId    String?
+  action     String
+  entityType String
+  entityId   String?
+  payload    Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+  requestId  String?
+
+  actor   User?    @relation("AuditActor", fields: [actorId], references: [id])
+  request Request? @relation("RequestAudit", fields: [requestId], references: [id])
+
+  @@index([entityType, entityId])
+}
