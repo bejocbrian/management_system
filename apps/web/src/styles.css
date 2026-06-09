@@ -259,12 +259,83 @@ code { font-family: 'SFMono-Regular', Consolas, monospace; font-size: 0.8rem; co
 .grid-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
 @media (max-width: 900px) { .grid-2col { grid-template-columns: 1fr; } }
 
+/* ─── Section heading inside cards ─── */
+.subsection-title { font-family: var(--font-heading); font-weight: 600; font-size: 1rem; color: var(--text-primary); margin-bottom: 1rem; letter-spacing: -0.01em; }
+
+/* ─── Field-level validation feedback ─── */
+.form-group input.invalid, .form-group select.invalid, .form-group textarea.invalid { border-color: var(--error); }
+.form-group input.invalid:focus, .form-group select.invalid:focus, .form-group textarea.invalid:focus { box-shadow: 0 0 0 3px var(--error-bg); }
+.field-error { font-size: 0.74rem; color: var(--error); font-weight: 500; margin-top: 0.3rem; display: flex; align-items: center; gap: 0.3rem; }
+.field-error .icon { width: 13px; height: 13px; stroke-width: 2.5; }
+.field-hint { font-size: 0.74rem; color: var(--text-muted); font-weight: 400; }
+
+/* ─── Loading skeletons ─── */
+.skeleton-table { display: flex; flex-direction: column; gap: 0.5rem; padding: 0.25rem; }
+.skeleton-line { height: 14px; border-radius: 5px; }
+.skeleton-card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.25rem; margin-bottom: 1.5rem; }
+.skeleton-stat { height: 108px; border-radius: 12px; }
+
+/* ─── Inline state blocks (error / empty) ─── */
+.state-block { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.75rem; padding: 3rem 1.5rem; text-align: center; }
+.state-block .state-icon { width: 48px; height: 48px; border-radius: 14px; display: flex; align-items: center; justify-content: center; }
+.state-block .state-icon .icon { width: 24px; height: 24px; }
+.state-icon.muted { background: var(--bg-subtle); color: var(--text-muted); border: 1px solid var(--border-color); }
+.state-icon.danger { background: var(--error-bg); color: var(--error); }
+.state-title { font-family: var(--font-heading); font-weight: 600; font-size: 1rem; color: var(--text-primary); }
+.state-desc { font-size: 0.85rem; color: var(--text-muted); max-width: 340px; line-height: 1.5; }
+
+/* ─── Dark-mode list item surface fix (was hardcoded white) ─── */
+.surface-list-item { padding: 0.65rem 0.85rem; background: var(--bg-subtle); border-radius: 8px; font-size: 0.875rem; border: 1px solid var(--border-color); color: var(--text-primary); display: flex; align-items: center; gap: 0.55rem; }
+.surface-list-item .icon { width: 16px; height: 16px; color: var(--text-muted); }
+
+/* ─── Spinner that adapts to context (not only white) ─── */
+.spinner.spinner-dark { border-color: var(--border-color); border-top-color: var(--primary); }
+
+/* ─── Toast variants ─── */
+.toast.toast-success { border-left: 3px solid var(--success); }
+.toast.toast-error { border-left: 3px solid var(--error); }
+.toast.toast-info { border-left: 3px solid var(--info); }
+.toast .toast-icon { display: flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0; }
+.toast .toast-icon .icon { width: 14px; height: 14px; stroke-width: 2.5; }
+.toast-icon.success { background: var(--success-bg); color: var(--success); }
+.toast-icon.error { background: var(--error-bg); color: var(--error); }
+.toast-icon.info { background: var(--info-bg); color: var(--info); }
+.toast-message { flex: 1; }
+.toast-close { background: transparent; border: none; padding: 0.15rem; color: var(--text-muted); cursor: pointer; display: flex; border-radius: 6px; }
+.toast-close:hover { color: var(--text-primary); background: var(--bg-subtle); }
+.toast-close .icon { width: 15px; height: 15px; }
+
+/* ─── Reports tabs + table ─── */
+.report-pre { background: var(--bg-subtle); border: 1px solid var(--border-color); border-radius: 10px; padding: 1rem; font-family: 'SFMono-Regular', Consolas, monospace; font-size: 0.8rem; color: var(--text-secondary); overflow-x: auto; max-height: 480px; }
+
+/* ─── Mobile navigation (hamburger + drawer) ─── */
+.mobile-nav-toggle { display: none; background: transparent; border: 1px solid var(--border-color); border-radius: 8px; padding: 0.5rem; color: var(--text-primary); }
+.sidebar-overlay { display: none; }
+.sidebar-close { display: none; }
+
 @media (max-width: 768px) {
-  .sidebar { width: 72px; padding: 1rem 0.5rem; align-items: center; }
-  .logo-text, .profile-name, .profile-role, .nav-text, .theme-toggle span { display: none; }
-  .logo-section { margin-bottom: 2rem; justify-content: center; }
-  .main-wrapper { margin-left: 72px; }
-  .nav-item { justify-content: center; padding: 0.7rem; }
+  .sidebar {
+    width: 264px; padding: 1.5rem; align-items: stretch;
+    transform: translateX(-100%); transition: transform var(--transition-normal); box-shadow: var(--shadow-pop);
+  }
+  .sidebar.open { transform: translateX(0); }
+  .logo-text, .profile-name, .profile-role, .nav-text, .theme-toggle span { display: inline; }
+  .logo-text { display: block; }
+  .logo-section { margin-bottom: 2rem; justify-content: flex-start; }
+  .nav-item { justify-content: flex-start; padding: 0.7rem 1rem; }
+  .main-wrapper { margin-left: 0; }
   .content-container { padding: 1.25rem; }
-  .header { padding: 0 1.25rem; }
+  .header { padding: 0 1rem; gap: 0.75rem; }
+  .page-title-section h1 { font-size: 1.15rem; }
+  .mobile-nav-toggle { display: inline-flex; }
+  .sidebar-overlay { display: block; position: fixed; inset: 0; background: rgba(15,23,42,0.5); z-index: 99; animation: fadeIn 0.18s ease; }
+  .sidebar-close { display: inline-flex; position: absolute; top: 1.25rem; right: 1rem; background: transparent; border: none; color: var(--sidebar-text); padding: 0.35rem; cursor: pointer; }
+  .grid-2col { grid-template-columns: 1fr; }
+  .toast-container { left: 1rem; right: 1rem; bottom: 1rem; }
+  .toast { max-width: none; }
+  .header-actions .btn-label { display: none; }
+}
+
+@media (min-width: 769px) {
+  .sidebar-overlay { display: none !important; }
 }
