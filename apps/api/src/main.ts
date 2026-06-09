@@ -33,7 +33,7 @@ app.use(express.json({ limit: '5mb' }));
 app.use(morgan('dev'));
 
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, service: 'school-inventory-api' });
+  res.json({ ok: true, service: 'fore-school-inventory-api' });
 });
 
 app.use('/auth', authRouter);

@@ -346,8 +346,8 @@ export const App = () => {
       <div className="login-container">
         <div className="login-card">
           <div className="login-logo">S</div>
-          <h1>School Inventory</h1>
-          <p>Role-based inventory & store management system</p>
+          <h1>Fore School</h1>
+          <p>Inventory & store management system</p>
           <div className="login-form">
             <div className="form-group">
               <label htmlFor="login-email">Email address</label>
@@ -384,7 +384,7 @@ export const App = () => {
       <aside className="sidebar">
         <div className="logo-section">
           <div className="logo-icon">S</div>
-          <span className="logo-text">StoreAdmin</span>
+          <span className="logo-text">Fore School</span>
         </div>
 
         <nav className="sidebar-nav">
