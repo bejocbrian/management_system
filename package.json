@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build": "cd apps/api && npx tsc -p tsconfig.json",
+    "build": "cd apps/api && npm install --ignore-scripts && npm install typescript --ignore-scripts && ./node_modules/.bin/prisma generate && ./node_modules/.bin/tsc -p tsconfig.json && ./node_modules/.bin/prisma migrate deploy",
     "start": "node apps/api/dist/main.js"
   }
 }
