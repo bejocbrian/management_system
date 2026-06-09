@@ -53,16 +53,14 @@ jobs:
           ls -la ./apps/web/dist/
           test -f ./apps/web/dist/index.html || (echo "index.html missing!" && exit 1)
 
-      - name: Deploy via FTP
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.4
+      - name: Deploy via SSH/SCP
+        uses: appleboy/scp-action@v0.1.7
         with:
-          server: ${{ secrets.HOSTINGER_FTP_HOST }}
-          username: ${{ secrets.HOSTINGER_FTP_USERNAME }}
-          password: ${{ secrets.HOSTINGER_FTP_PASSWORD }}
-          protocol: ftps
-          port: 21
-          local-dir: ./apps/web/dist/
-          server-dir: /public_html/
-          exclude: |
-            **/.git*
-            **/node_modules/**
+          host: ${{ secrets.API_SSH_HOST }}
+          username: ${{ secrets.API_SSH_USERNAME }}
+          password: ${{ secrets.API_SSH_PASSWORD }}
+          port: 65002
+          source: "./apps/web/dist/*"
+          target: "/home/${{ secrets.API_SSH_USERNAME }}/domains/powderblue-caterpillar-585125.hostingersite.com/public_html"
+          strip_components: 3
+          overwrite: true
