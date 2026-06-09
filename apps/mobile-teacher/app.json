@@ -1,10 +1,22 @@
 {
   "expo": {
-    "name": "Teacher Inventory",
-    "slug": "teacher-inventory",
+    "name": "Fore School",
+    "slug": "fore-school-inventory",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
-    "entryPoint": "./index.js"
+    "android": {
+      "package": "com.foreschool.inventory",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "backgroundColor": "#0f172a"
+      }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "923e6ba5-45b1-4885-9401-eb966068a31b"
+      }
+    },
+    "owner": "bejocbrians-team"
   }
 }

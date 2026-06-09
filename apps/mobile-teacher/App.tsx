@@ -16,7 +16,7 @@ import {
   Animated,
 } from 'react-native';
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:4000';
+const API_BASE_URL = (process.env.EXPO_PUBLIC_API_URL || 'http://localhost:4000').replace(/\/$/, '');
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -245,8 +245,8 @@ export default function App() {
               <View style={styles.logoCircle}>
                 <Text style={styles.logoIcon}>📦</Text>
               </View>
-              <Text style={styles.appName}>StoreKeep</Text>
-              <Text style={styles.appTagline}>School Inventory · Teacher Portal</Text>
+              <Text style={styles.appName}>Fore School</Text>
+              <Text style={styles.appTagline}>Inventory · Teacher Portal</Text>
             </View>
 
             <View style={styles.loginCard}>
@@ -298,7 +298,7 @@ export default function App() {
                 )}
               </Pressable>
 
-              <Text style={styles.serverHint}>API: {API_BASE_URL}</Text>
+              <Text style={styles.serverHint}> </Text>
             </View>
           </Animated.View>
         </KeyboardAvoidingView>
