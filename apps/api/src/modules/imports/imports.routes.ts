@@ -1,9 +1,8 @@
 import crypto from 'crypto';
 import { Router } from 'express';
-import { ImportStatus, ImportType, ItemType, LedgerEntryType, Role } from '@prisma/client';
+import { ImportStatus, ImportType, ItemType, LedgerEntryType } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../../db.js';
-import { config } from '../../config.js';
 import type { AuthedRequest } from '../../types.js';
 import { appendLedgerEntry } from '../inventory-ledger/inventory-ledger.service.js';
 import { parseCsv } from './csv.js';
@@ -14,201 +13,53 @@ const importSchema = z.object({
   csvData: z.string().min(1)
 });
 
-const confirmLockSchema = z.object({
-  confirm: z.literal(true)
-});
+// Only these 3 are required — everything else is optional
+const REQUIRED_COLUMNS = ['item_code', 'item_name', 'qty'];
 
-const openingRequiredColumns = ['item_code', 'item_name', 'qty', 'unit', 'type'];
-const invoiceRequiredColumns = [
-  'invoice_no',
-  'invoice_date',
-  'supplier_name',
-  'item_code',
-  'item_name',
-  'qty',
-  'unit_price'
-];
-
-const ensureColumns = (rows: Record<string, string>[], columns: string[]) => {
+const ensureRequiredColumns = (rows: Record<string, string>[]) => {
   const first = rows[0] ?? {};
-  const missing = columns.filter((column) => !(column in first));
+  const missing = REQUIRED_COLUMNS.filter((col) => !(col in first));
   if (missing.length > 0) {
-    throw new Error(`Missing CSV columns: ${missing.join(', ')}`);
+    throw new Error(`Missing required CSV columns: ${missing.join(', ')}`);
   }
 };
 
-const findOrCreateItem = async (row: Record<string, string>, createdById: string) => {
-  const code = row.item_code.trim();
-  const existing = await prisma.item.findUnique({ where: { code } });
-  if (existing) {
-    return existing;
-  }
+/**
+ * Find existing item by code, or create it if not found.
+ * If item exists — just return it (stock will be added via ledger entry).
+ * Optional fields: unit, type, low_stock_threshold, description
+ */
+const findOrCreateItem = async (row: Record<string, string>) => {
+  const code = row.item_code?.trim();
+  if (!code) throw new Error('item_code is empty');
 
+  const existing = await prisma.item.findUnique({ where: { code } });
+  if (existing) return existing;
+
+  // Create with optional fields falling back to sensible defaults
+  const rawType = row.type?.trim().toUpperCase();
   return prisma.item.create({
     data: {
       code,
-      name: row.item_name.trim(),
-      unit: row.unit?.trim() || 'unit',
-      type: row.type?.trim().toUpperCase() === 'RETURNABLE' ? ItemType.RETURNABLE : ItemType.CONSUMABLE,
-      lowStockThreshold: 0
+      name: row.item_name?.trim() || code,
+      unit: row.unit?.trim() || 'pcs',
+      type: rawType === 'RETURNABLE' ? ItemType.RETURNABLE : ItemType.CONSUMABLE,
+      lowStockThreshold: Number(row.low_stock_threshold) || 0,
+      description: row.description?.trim() || null,
     }
   });
-};
-
-const lineHash = (row: Record<string, string>) => {
-  const payload = [
-    row.invoice_no,
-    row.invoice_date,
-    row.supplier_name,
-    row.item_code,
-    row.qty,
-    row.unit_price
-  ].join('|');
-
-  return crypto.createHash('sha256').update(payload).digest('hex');
 };
 
 export const importsRouter = Router();
 
-importsRouter.post('/opening-stock', async (req: AuthedRequest, res) => {
-  if (!req.user) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-
-  const parsed = importSchema.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(400).json({ error: parsed.error.flatten() });
-  }
-
-  const lockSetting = await prisma.systemSetting.findUnique({ where: { key: config.openingImportLockKey } });
-  if (lockSetting?.value === 'true') {
-    return res.status(409).json({ error: 'Opening stock import is already locked' });
-  }
-
-  const rows = parseCsv(parsed.data.csvData);
-  if (!rows.length) {
-    return res.status(400).json({ error: 'CSV has no data rows' });
-  }
-
-  try {
-    ensureColumns(rows, openingRequiredColumns);
-  } catch (error) {
-    return res.status(400).json({ error: error instanceof Error ? error.message : 'Invalid CSV' });
-  }
-
-  const summary = {
-    totalRows: rows.length,
-    successRows: 0,
-    failedRows: 0
-  };
-
-  const errors: Array<{ row: number; message: string }> = [];
-
-  const batch = await prisma.importBatch.create({
-    data: {
-      type: ImportType.OPENING_STOCK,
-      fileName: parsed.data.fileName,
-      checksum: crypto.createHash('sha256').update(parsed.data.csvData).digest('hex'),
-      createdById: req.user.id
-    }
-  });
-
-  for (let index = 0; index < rows.length; index += 1) {
-    const row = rows[index];
-
-    try {
-      const quantity = Number(row.qty);
-      if (!Number.isFinite(quantity) || quantity <= 0) {
-        throw new Error('qty must be > 0');
-      }
-
-      const item = await findOrCreateItem(row, req.user.id);
-      await appendLedgerEntry({
-        itemId: item.id,
-        type: LedgerEntryType.OPENING_STOCK,
-        quantityDelta: Math.trunc(quantity),
-        referenceType: 'OPENING_IMPORT',
-        referenceId: batch.id,
-        importBatchId: batch.id,
-        createdById: req.user.id,
-        notes: 'Opening stock import'
-      });
-
-      summary.successRows += 1;
-    } catch (error) {
-      summary.failedRows += 1;
-      errors.push({ row: index + 2, message: error instanceof Error ? error.message : 'Unknown row error' });
-    }
-  }
-
-  const status =
-    summary.failedRows === 0 ? ImportStatus.SUCCESS : summary.successRows > 0 ? ImportStatus.PARTIAL_SUCCESS : ImportStatus.FAILED;
-
-  await prisma.importBatch.update({
-    where: { id: batch.id },
-    data: { status, summary, errors }
-  });
-
-  if (summary.successRows > 0) {
-    await prisma.systemSetting.upsert({
-      where: { key: config.openingImportLockKey },
-      update: { value: 'true' },
-      create: { key: config.openingImportLockKey, value: 'true' }
-    });
-  }
-
-  await writeAuditLog({
-    actorId: req.user.id,
-    action: 'OPENING_STOCK_IMPORTED',
-    entityType: 'ImportBatch',
-    entityId: batch.id,
-    payload: { summary, errors },
-    ipAddress: req.ip
-  });
-
-  return res.status(201).json({ batchId: batch.id, status, summary, errors });
-});
-
-importsRouter.post('/opening-stock/confirm-lock', async (req: AuthedRequest, res) => {
-  if (!req.user) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-
-  if (req.user.role !== Role.ADMIN) {
-    return res.status(403).json({ error: 'Only admins can confirm opening stock lock' });
-  }
-
-  const parsed = confirmLockSchema.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(400).json({ error: parsed.error.flatten() });
-  }
-
-  const lockSetting = await prisma.systemSetting.upsert({
-    where: { key: config.openingImportLockKey },
-    update: { value: 'true' },
-    create: { key: config.openingImportLockKey, value: 'true' }
-  });
-
-  await writeAuditLog({
-    actorId: req.user.id,
-    action: 'OPENING_STOCK_LOCK_CONFIRMED',
-    entityType: 'SystemSetting',
-    entityId: lockSetting.key,
-    payload: lockSetting,
-    ipAddress: req.ip
-  });
-
-  return res.json({
-    message: 'Opening stock import lock confirmed',
-    key: lockSetting.key,
-    value: lockSetting.value
-  });
-});
-
-importsRouter.post('/invoice-stock', async (req: AuthedRequest, res) => {
-  if (!req.user) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
+/**
+ * POST /imports/stock
+ * Universal stock import — adds stock to existing items or creates new ones.
+ * Required CSV columns: item_code, item_name, qty
+ * Optional: unit, type, unit_price, invoice_no, supplier_name, description, low_stock_threshold
+ */
+importsRouter.post('/stock', async (req: AuthedRequest, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
 
   const parsed = importSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -221,19 +72,14 @@ importsRouter.post('/invoice-stock', async (req: AuthedRequest, res) => {
   }
 
   try {
-    ensureColumns(rows, invoiceRequiredColumns);
+    ensureRequiredColumns(rows);
   } catch (error) {
     return res.status(400).json({ error: error instanceof Error ? error.message : 'Invalid CSV' });
   }
 
-  const summary = {
-    totalRows: rows.length,
-    importedRows: 0,
-    duplicateRows: 0,
-    failedRows: 0
-  };
-
-  const errors: Array<{ row: number; message: string }> = [];
+  const summary = { totalRows: rows.length, successRows: 0, skippedRows: 0, failedRows: 0 };
+  const errors: Array<{ row: number; item_code: string; message: string }> = [];
+  const results: Array<{ row: number; item_code: string; item_name: string; qty: number; status: 'created' | 'updated' }> = [];
 
   const batch = await prisma.importBatch.create({
     data: {
@@ -244,98 +90,102 @@ importsRouter.post('/invoice-stock', async (req: AuthedRequest, res) => {
     }
   });
 
-  for (let index = 0; index < rows.length; index += 1) {
-    const row = rows[index];
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const rowNum = i + 2; // +2 because row 1 is headers
 
     try {
-      const fingerprint = lineHash(row);
-      const invoiceNo = row.invoice_no.trim();
-      const existingFingerprint = await prisma.invoiceLineFingerprint.findUnique({
-        where: {
-          invoiceNo_lineHash: {
-            invoiceNo,
-            lineHash: fingerprint
-          }
-        }
+      const qty = Number(row.qty);
+      if (!Number.isFinite(qty) || qty <= 0) {
+        throw new Error(`qty must be a positive number, got "${row.qty}"`);
+      }
+
+      const wasNew = !(await prisma.item.findUnique({ where: { code: row.item_code?.trim() } }));
+      const item = await findOrCreateItem(row);
+
+      const unitPrice = row.unit_price ? Number(row.unit_price) : undefined;
+
+      await appendLedgerEntry({
+        itemId: item.id,
+        type: LedgerEntryType.IMPORT_STOCK,
+        quantityDelta: Math.trunc(qty),
+        unitPrice: unitPrice && Number.isFinite(unitPrice) ? unitPrice : undefined,
+        referenceType: 'CSV_IMPORT',
+        referenceId: batch.id,
+        invoiceNo: row.invoice_no?.trim() || undefined,
+        importBatchId: batch.id,
+        createdById: req.user!.id,
+        notes: row.supplier_name?.trim()
+          ? `Supplier: ${row.supplier_name.trim()}`
+          : 'CSV stock import'
       });
 
-      if (existingFingerprint) {
-        summary.duplicateRows += 1;
-        continue;
-      }
-
-      const quantity = Number(row.qty);
-      const unitPrice = Number(row.unit_price);
-
-      if (!Number.isFinite(quantity) || quantity <= 0) {
-        throw new Error('qty must be > 0');
-      }
-
-      if (!Number.isFinite(unitPrice) || unitPrice < 0) {
-        throw new Error('unit_price must be >= 0');
-      }
-
-      const item = await findOrCreateItem(
-        {
-          ...row,
-          unit: row.unit || 'unit',
-          type: row.type || 'CONSUMABLE'
-        },
-        req.user.id
-      );
-
-      await prisma.$transaction(async (tx) => {
-        await tx.invoiceLineFingerprint.create({
-          data: {
-            invoiceNo,
-            lineHash: fingerprint
-          }
-        });
-
-        await appendLedgerEntry(
-          {
-            itemId: item.id,
-            type: LedgerEntryType.IMPORT_STOCK,
-            quantityDelta: Math.trunc(quantity),
-            unitPrice,
-            referenceType: 'INVOICE_IMPORT',
-            referenceId: batch.id,
-            invoiceNo,
-            importBatchId: batch.id,
-            createdById: req.user!.id,
-            notes: `Supplier: ${row.supplier_name}`
-          },
-          tx
-        );
+      summary.successRows += 1;
+      results.push({
+        row: rowNum,
+        item_code: item.code,
+        item_name: item.name,
+        qty: Math.trunc(qty),
+        status: wasNew ? 'created' : 'updated'
       });
-
-      summary.importedRows += 1;
     } catch (error) {
       summary.failedRows += 1;
-      errors.push({ row: index + 2, message: error instanceof Error ? error.message : 'Unknown row error' });
+      errors.push({
+        row: rowNum,
+        item_code: row.item_code ?? '',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
     }
   }
 
   const status =
-    summary.failedRows === 0 ? ImportStatus.SUCCESS : summary.importedRows > 0 ? ImportStatus.PARTIAL_SUCCESS : ImportStatus.FAILED;
+    summary.failedRows === 0
+      ? ImportStatus.SUCCESS
+      : summary.successRows > 0
+        ? ImportStatus.PARTIAL_SUCCESS
+        : ImportStatus.FAILED;
 
   await prisma.importBatch.update({
     where: { id: batch.id },
-    data: {
-      status,
-      summary,
-      errors
-    }
+    data: { status, summary, errors }
   });
 
   await writeAuditLog({
     actorId: req.user.id,
-    action: 'INVOICE_STOCK_IMPORTED',
+    action: 'STOCK_IMPORTED',
     entityType: 'ImportBatch',
     entityId: batch.id,
     payload: { summary, errors },
     ipAddress: req.ip
   });
 
-  return res.status(201).json({ batchId: batch.id, status, summary, errors });
+  return res.status(201).json({ batchId: batch.id, status, summary, results, errors });
+});
+
+/**
+ * Keep old routes working so existing code doesn't break
+ */
+importsRouter.post('/opening-stock', async (req: AuthedRequest, res) => {
+  return res.redirect(307, '/imports/stock');
+});
+
+importsRouter.post('/invoice-stock', async (req: AuthedRequest, res) => {
+  return res.redirect(307, '/imports/stock');
+});
+
+/**
+ * GET /imports/template
+ * Download a sample CSV template
+ */
+importsRouter.get('/template', (_req, res) => {
+  const csv = [
+    'item_code,item_name,qty,unit,type,unit_price,supplier_name,invoice_no,description',
+    'CHALK-001,White Chalk Box,50,box,CONSUMABLE,120,ABC Suppliers,INV-001,White chalk for classrooms',
+    'MARK-001,Whiteboard Marker,30,pcs,CONSUMABLE,25,ABC Suppliers,INV-001,',
+    'CALC-001,Scientific Calculator,10,pcs,RETURNABLE,450,,,'
+  ].join('\n');
+
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', 'attachment; filename="stock_import_template.csv"');
+  return res.send(csv);
 });

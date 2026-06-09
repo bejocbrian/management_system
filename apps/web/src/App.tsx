@@ -118,9 +118,15 @@ export const App = () => {
   const [itemUnit, setItemUnit] = useState('pcs');
   const [itemInitialStock, setItemInitialStock] = useState(0);
   const [itemType, setItemType] = useState<'CONSUMABLE' | 'RETURNABLE'>('CONSUMABLE');
-  const [importFileName, setImportFileName] = useState('sample.csv');
-  const [importType, setImportType] = useState<'opening' | 'invoice'>('invoice');
+  const [importFileName, setImportFileName] = useState('');
   const [csvData, setCsvData] = useState('');
+  const [importResult, setImportResult] = useState<null | {
+    status: string;
+    summary: { totalRows: number; successRows: number; failedRows: number };
+    results: Array<{ row: number; item_code: string; item_name: string; qty: number; status: 'created' | 'updated' }>;
+    errors: Array<{ row: number; item_code: string; message: string }>;
+  }>(null);
+  const [importLoading, setImportLoading] = useState(false);
   const [issueRequestId, setIssueRequestId] = useState('');
   const [issueOverrideReason, setIssueOverrideReason] = useState('');
   const [returnIssueId, setReturnIssueId] = useState('');
@@ -238,13 +244,57 @@ export const App = () => {
 
   const submitImport = async () => {
     if (!token || !csvData) return;
+    setImportLoading(true);
+    setImportResult(null);
     try {
-      await api(importType === 'opening' ? '/imports/opening-stock' : '/imports/invoice-stock', { token, method: 'POST', body: { fileName: importFileName, csvData } });
+      const result = await api<{
+        status: string;
+        summary: { totalRows: number; successRows: number; failedRows: number };
+        results: Array<{ row: number; item_code: string; item_name: string; qty: number; status: 'created' | 'updated' }>;
+        errors: Array<{ row: number; item_code: string; message: string }>;
+      }>('/imports/stock', { token, method: 'POST', body: { fileName: importFileName || 'import.csv', csvData } });
+      setImportResult(result);
       await loadData();
-      notify('Import processed successfully', 'success');
+      notify(`Import done: ${result.summary.successRows} succeeded, ${result.summary.failedRows} failed`, result.summary.failedRows === 0 ? 'success' : 'error');
     } catch (error) {
       notify(error instanceof Error ? error.message : 'Import failed', 'error');
+    } finally {
+      setImportLoading(false);
     }
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target?.result as string;
+      setCsvData(text);
+      // auto-submit after file is loaded
+      setTimeout(() => {
+        if (text.trim()) {
+          setImportLoading(true);
+          setImportResult(null);
+          api<{
+            status: string;
+            summary: { totalRows: number; successRows: number; failedRows: number };
+            results: Array<{ row: number; item_code: string; item_name: string; qty: number; status: 'created' | 'updated' }>;
+            errors: Array<{ row: number; item_code: string; message: string }>;
+          }>('/imports/stock', { token: token!, method: 'POST', body: { fileName: file.name, csvData: text } })
+            .then(result => {
+              setImportResult(result);
+              loadData();
+              notify(`Import done: ${result.summary.successRows} succeeded, ${result.summary.failedRows} failed`, result.summary.failedRows === 0 ? 'success' : 'error');
+            })
+            .catch(err => notify(err instanceof Error ? err.message : 'Import failed', 'error'))
+            .finally(() => setImportLoading(false));
+        }
+      }, 50);
+    };
+    reader.readAsText(file);
+    // reset so same file can be re-selected
+    e.target.value = '';
   };
 
   const createIssueFromRequest = async () => {
@@ -711,27 +761,114 @@ export const App = () => {
           {/* ─── IMPORTS TAB ─── */}
           {activeTab === 'Imports' && (
             <div className="card">
-              <div className="card-header-row"><h2>CSV Stock Import</h2></div>
-              <div className="stack-form">
-                <div className="inline-form">
-                  <div className="form-group">
-                    <label>Import Type</label>
-                    <select id="import-type" value={importType} onChange={e => setImportType(e.target.value as 'opening' | 'invoice')}>
-                      <option value="invoice">Invoice stock-in</option>
-                      <option value="opening">Opening stock (one-time)</option>
-                    </select>
-                  </div>
-                  <div className="form-group">
-                    <label>File Name</label>
-                    <input id="import-filename" value={importFileName} onChange={e => setImportFileName(e.target.value)} />
-                  </div>
-                </div>
-                <div className="form-group">
-                  <label>Paste CSV Data</label>
-                  <textarea id="import-csv-data" value={csvData} onChange={e => setCsvData(e.target.value)} placeholder={importType === 'invoice' ? 'invoice_no,invoice_date,supplier_name,item_code,item_name,qty,unit_price' : 'item_code,item_name,qty,unit,type'} rows={8} style={{ fontFamily: 'monospace', fontSize: '0.85rem' }} />
-                </div>
-                <button id="submit-import-btn" className="primary" onClick={submitImport}>📥 Import CSV</button>
+              <div className="card-header-row">
+                <h2>CSV Stock Import</h2>
+                <a href={`${import.meta.env.VITE_API_URL || 'http://localhost:4000'}/imports/template`} className="badge badge-info" style={{ textDecoration: 'none', cursor: 'pointer' }}>⬇ Download Template</a>
               </div>
+
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '1.25rem' }}>
+                Click <strong>Import CSV</strong> to pick a file, or paste data below. Required columns: <code>item_code</code>, <code>item_name</code>, <code>qty</code>. Optional: <code>unit</code>, <code>type</code>, <code>unit_price</code>, <code>supplier_name</code>, <code>invoice_no</code>.
+              </p>
+
+              {/* Hidden file input triggered by the Import CSV button */}
+              <input
+                id="import-file-input"
+                type="file"
+                accept=".csv,text/csv"
+                style={{ display: 'none' }}
+                onChange={handleFileUpload}
+              />
+
+              <div className="stack-form">
+                <div className="form-group">
+                  <label>Paste CSV Data {importFileName && <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>— 📄 {importFileName}</span>}</label>
+                  <textarea
+                    id="import-csv-data"
+                    value={csvData}
+                    onChange={e => { setCsvData(e.target.value); setImportFileName(''); }}
+                    placeholder={'item_code,item_name,qty,unit,type\nCHALK-001,White Chalk Box,50,box,CONSUMABLE'}
+                    rows={6}
+                    style={{ fontFamily: 'monospace', fontSize: '0.85rem' }}
+                  />
+                </div>
+
+                <button
+                  id="submit-import-btn"
+                  className="primary"
+                  disabled={importLoading}
+                  onClick={() => {
+                    if (csvData.trim()) {
+                      submitImport();
+                    } else {
+                      document.getElementById('import-file-input')?.click();
+                    }
+                  }}
+                >
+                  {importLoading ? '⏳ Importing…' : '📥 Import CSV'}
+                </button>
+              </div>
+
+              {/* Results */}
+              {importResult && (
+                <div style={{ marginTop: '2rem' }}>
+                  <div className="card-header-row" style={{ marginBottom: '1rem' }}>
+                    <h2>Import Results</h2>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <span className="badge badge-success">{importResult.summary.successRows} succeeded</span>
+                      {importResult.summary.failedRows > 0 && <span className="badge badge-danger">{importResult.summary.failedRows} failed</span>}
+                    </div>
+                  </div>
+
+                  {importResult.results.length > 0 && (
+                    <div className="table-wrapper" style={{ marginBottom: '1rem' }}>
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Row</th>
+                            <th>Code</th>
+                            <th>Name</th>
+                            <th>Qty Added</th>
+                            <th>Action</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {importResult.results.map(r => (
+                            <tr key={r.row}>
+                              <td style={{ color: 'var(--text-muted)' }}>{r.row}</td>
+                              <td><code style={{ color: 'var(--primary)', fontSize: '0.8rem' }}>{r.item_code}</code></td>
+                              <td>{r.item_name}</td>
+                              <td>+{r.qty}</td>
+                              <td><span className={`badge ${r.status === 'created' ? 'badge-purple' : 'badge-success'}`}>{r.status === 'created' ? 'New item' : 'Stock added'}</span></td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {importResult.errors.length > 0 && (
+                    <div>
+                      <h3 style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>Errors</h3>
+                      <div className="table-wrapper">
+                        <table>
+                          <thead>
+                            <tr><th>Row</th><th>Code</th><th>Error</th></tr>
+                          </thead>
+                          <tbody>
+                            {importResult.errors.map(e => (
+                              <tr key={e.row}>
+                                <td style={{ color: 'var(--text-muted)' }}>{e.row}</td>
+                                <td><code style={{ fontSize: '0.8rem' }}>{e.item_code || '—'}</code></td>
+                                <td style={{ color: '#ef4444', fontSize: '0.875rem' }}>{e.message}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
