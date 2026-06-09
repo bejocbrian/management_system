@@ -1,4 +1,4 @@
-name: Deploy Frontend to Hostinger
+name: Build Frontend
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
     branches: [master]
 
 jobs:
-  build-and-deploy:
+  build:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -52,15 +52,7 @@ jobs:
         run: |
           ls -la ./apps/web/dist/
           test -f ./apps/web/dist/index.html || (echo "index.html missing!" && exit 1)
+          echo "Build successful. Deploy manually using: .\deploy-web.ps1"
 
-      - name: Deploy via SSH/SCP
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.API_SSH_HOST }}
-          username: ${{ secrets.API_SSH_USERNAME }}
-          password: ${{ secrets.API_SSH_PASSWORD }}
-          port: 65002
-          source: "./apps/web/dist/*"
-          target: "/home/u853826912/domains/powderblue-caterpillar-585125.hostingersite.com/public_html"
-          strip_components: 3
-          overwrite: true
+      # NOTE: SCP to Hostinger port 65002 is blocked from GitHub Actions IPs.
+      # Deploy manually from your local machine using: .\deploy-web.ps1
