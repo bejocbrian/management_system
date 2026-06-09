@@ -3,11 +3,20 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Fore School — Inventory & Store Management System — Role-based operations for Admin, Storekeeper, and Teacher." />
-    <meta name="theme-color" content="#0b0f19" />
-    <title>Fore School — Inventory</title>
+    <meta name="description" content="FORE School of Management — Inventory & Store Management System. Role-based operations for Admin, Storekeeper, and Teacher." />
+    <meta name="theme-color" content="#0f2747" />
+    <title>FORE School of Management — Inventory</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <script>
+      // Apply persisted theme before first paint to avoid a flash of the wrong theme.
+      (function () {
+        try {
+          var t = localStorage.getItem('theme') || 'light';
+          document.documentElement.setAttribute('data-theme', t);
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
