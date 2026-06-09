@@ -61,6 +61,6 @@ jobs:
           password: ${{ secrets.API_SSH_PASSWORD }}
           port: 65002
           source: "./apps/web/dist/*"
-          target: "/home/${{ secrets.API_SSH_USERNAME }}/domains/powderblue-caterpillar-585125.hostingersite.com/public_html"
+          target: "/home/u853826912/domains/powderblue-caterpillar-585125.hostingersite.com/public_html"
           strip_components: 3
           overwrite: true
