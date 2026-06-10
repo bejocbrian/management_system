@@ -266,31 +266,34 @@ export const App = () => {
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (!token) {
+      notify('Not logged in', 'error');
+      return;
+    }
+    setImportLoading(true);
+    setImportResult(null);
     setImportFileName(file.name);
     const reader = new FileReader();
     reader.onload = (ev) => {
       const text = ev.target?.result as string;
-      setCsvData(text);
-      // auto-submit after file is loaded
-      setTimeout(() => {
-        if (text.trim()) {
-          setImportLoading(true);
-          setImportResult(null);
-          api<{
-            status: string;
-            summary: { totalRows: number; successRows: number; failedRows: number };
-            results: Array<{ row: number; item_code: string; item_name: string; qty: number; status: 'created' | 'updated' }>;
-            errors: Array<{ row: number; item_code: string; message: string }>;
-          }>('/imports/stock', { token: token!, method: 'POST', body: { fileName: file.name, csvData: text } })
-            .then(result => {
-              setImportResult(result);
-              loadData();
-              notify(`Import done: ${result.summary.successRows} succeeded, ${result.summary.failedRows} failed`, result.summary.failedRows === 0 ? 'success' : 'error');
-            })
-            .catch(err => notify(err instanceof Error ? err.message : 'Import failed', 'error'))
-            .finally(() => setImportLoading(false));
-        }
-      }, 50);
+      if (!text.trim()) {
+        setImportLoading(false);
+        return;
+      }
+      // Don't set csvData — keep textarea clean so next button click opens file picker again
+      api<{
+        status: string;
+        summary: { totalRows: number; successRows: number; failedRows: number };
+        results: Array<{ row: number; item_code: string; item_name: string; qty: number; status: 'created' | 'updated' }>;
+        errors: Array<{ row: number; item_code: string; message: string }>;
+      }>('/imports/stock', { token, method: 'POST', body: { fileName: file.name, csvData: text } })
+        .then(result => {
+          setImportResult(result);
+          loadData();
+          notify(`Import done: ${result.summary.successRows} succeeded, ${result.summary.failedRows} failed`, result.summary.failedRows === 0 ? 'success' : 'error');
+        })
+        .catch(err => notify(err instanceof Error ? err.message : 'Import failed', 'error'))
+        .finally(() => setImportLoading(false));
     };
     reader.readAsText(file);
     // reset so same file can be re-selected
@@ -804,7 +807,7 @@ export const App = () => {
                     }
                   }}
                 >
-                  {importLoading ? '⏳ Importing…' : '📥 Import CSV'}
+                  {importLoading ? '⏳ Importing…' : csvData.trim() ? '📥 Import CSV' : '📂 Choose CSV File'}
                 </button>
               </div>
 
