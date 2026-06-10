@@ -36,8 +36,7 @@ const parseLine = (line: string): string[] => {
     }
   }
 
-  cells.push(current.trim());
-  return cells;
+  cells.push(current.trim());  return cells;
 };
 
 export const parseCsv = (raw: string): CsvRow[] => {
